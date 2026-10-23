@@ -4,6 +4,7 @@ import { sortComponentQueue } from "./sortComponentQueue"
 import { SingleComponentPackSolver } from "../SingleComponentPackSolver/SingleComponentPackSolver"
 import { BaseSolver } from "@tscircuit/solver-utils"
 import type {
+  DistanceConstraint,
   InputComponent,
   OutputPad,
   PackedComponent,
@@ -209,6 +210,58 @@ export class PackSolver2 extends BaseSolver {
       if (!this.componentToPack) {
         this.solved = true
         return
+      }
+
+      // Check if componentToPack has an active distanceConstraint with an already packed component
+      const constraints: DistanceConstraint[] = this.packInput.distanceConstraints ?? []
+      for (const constraint of constraints) {
+        if (constraint.type === "fixed_x_distance_and_orientation") {
+          if (this.componentToPack.componentId === constraint.rightChipId) {
+            const leftChip = this.packedComponents.find(
+              (c) => c.componentId === constraint.leftChipId,
+            )
+            if (leftChip) {
+              const packedComponent: PackedComponent = {
+                ...this.componentToPack,
+                center: {
+                  x: leftChip.center.x + constraint.distance,
+                  y: leftChip.center.y,
+                },
+                ccwRotationOffset: leftChip.ccwRotationOffset,
+                pads: this.componentToPack.pads.map((p) => ({
+                  ...p,
+                  absoluteCenter: { x: 0, y: 0 },
+                })),
+              }
+              setPackedComponentPadCenters(packedComponent)
+              this.packedComponents.push(packedComponent)
+              this.componentToPack = undefined
+              return
+            }
+          } else if (this.componentToPack.componentId === constraint.leftChipId) {
+            const rightChip = this.packedComponents.find(
+              (c) => c.componentId === constraint.rightChipId,
+            )
+            if (rightChip) {
+              const packedComponent: PackedComponent = {
+                ...this.componentToPack,
+                center: {
+                  x: rightChip.center.x - constraint.distance,
+                  y: rightChip.center.y,
+                },
+                ccwRotationOffset: rightChip.ccwRotationOffset,
+                pads: this.componentToPack.pads.map((p) => ({
+                  ...p,
+                  absoluteCenter: { x: 0, y: 0 },
+                })),
+              }
+              setPackedComponentPadCenters(packedComponent)
+              this.packedComponents.push(packedComponent)
+              this.componentToPack = undefined
+              return
+            }
+          }
+        }
       }
       this.activeSubSolver = new SingleComponentPackSolver({
         packedComponents: this.packedComponents,
